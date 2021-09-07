@@ -420,8 +420,8 @@ class rnn():
         forecasts.plot(y = [self.y_col[0] + '_pred', self.y_col[0] + '_true'])
         forecasts.plot(y = [self.y_col[1] + '_pred', self.y_col[1] + '_true'])
         
-        if isdir(self.results_path) == False:
-            mkdir(self.results_path)
+#         if isdir(self.results_path) == False:
+        makedirs(self.results_path, exist_ok = True)
         forecasts.to_pickle(self.results_path + 'forecast.pkl')
         return forecasts
 
@@ -458,8 +458,8 @@ class rnn():
         print(pi)
         pi.plot(y = [self.y_col[0] + '_true', self.y_col[0] + '_lower', self.y_col[0] + '_upper'])
         pi.plot(y = [self.y_col[1] + '_true', self.y_col[1] + '_lower', self.y_col[1] + '_upper'])
-        if isdir(self.results_path) == False:
-            mkdir(self.results_path)
+#         if isdir(self.results_path) == False:
+        makedirs(self.results_path, exist_ok = True)
         pi.to_pickle(self.results_path + 'pi.pkl')
         return pi
 
