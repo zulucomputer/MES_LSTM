@@ -5,10 +5,13 @@ This repository contains the code for the model presented in the paper by T. Mat
 
 ### Requirements
 ```
-- python = 3.8
-- tensorflow = 2.5.0
-- tensorflow_probability = 0.13.0
-- matplotib =
+- python=3.8
+- tensorflow=2.5.0
+- tensorflow_probability=0.13.0
+- matplotib=
+- scikit-learn=
+- pandas=
+- satsmodels=
 ```
 
 
