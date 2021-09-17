@@ -24,6 +24,7 @@ print(tf.config.list_physical_devices('GPU'))
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--country", type = str, required = True, help = "which country to execute model on")
+parser.add_argument('--thresh', type = float, required = False, help = 'threshold of missing data if column is to be deleted')
 args = parser.parse_args()
 
 
@@ -72,7 +73,10 @@ for run in range(runs):
     # MES_RNN model
 
     # pre-processing layer
-    pre_layer = preprocess(first_time = 0, loc = args.country.replace('_', ' ')) # change to 1 if first time running to download data
+    if args.thresh:
+        pre_layer = preprocess(first_time = 0, loc = args.country.replace('_', ' '), thresh = args.thresh) # change first_time to 1 if first time running to download data
+    else:
+        pre_layer = preprocess(first_time = 0, loc = args.country.replace('_', ' ')) # use default thresh
     df = pre_layer.load_data()
     df = pre_layer.clean_data(df)
     df = pre_layer.fill_missing(df)
@@ -198,8 +202,10 @@ for run in range(runs):
     results_deaths = results_deaths.append(pd.DataFrame(np.array(result_deaths).reshape(1,-1), columns = list(results_deaths)), ignore_index=True)
     results_cases = results_cases.append(pd.DataFrame(np.array(result_cases).reshape(1,-1), columns = list(results_cases)), ignore_index=True)
 #         results_cases.append(result_cases)
-    print(results_deaths)
-    print(results_cases)
+    print(results_deaths.tail())
+    print(results_cases.tail())
+    
+print('[INFO] ---------------------- DONE -----------------------------')
 
 
 results_deaths.to_pickle(args.country + '/results/' + 'multiple_runs_deaths.pkl')
