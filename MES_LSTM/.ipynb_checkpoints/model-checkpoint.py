@@ -137,10 +137,12 @@ class ES(preprocess):
     def __init__(self,
                  internals_path = 'internals',
                  params_path = 'params',
-                loc = 'United Kingdom'):
+                 alpha = 0.1,
+                 loc = 'United Kingdom'):
         
         self.internals_path = internals_path
         self.params_path = params_path
+        self.alpha = alpha
         self.loc = loc
     
     def get_params(self, x_i, dates):
@@ -186,18 +188,18 @@ class ES(preprocess):
         params_dict = dict()
         
         
-        if isdir(self.params_path) == False:
-            makedirs(self.loc + '/' + self.params_path, exist_ok = True)
+        if isdir(str(self.alpha) + '/' + self.params_path) == False:
+            makedirs(self.loc + '/' + str(self.alpha) + '/' + self.params_path, exist_ok = True)
             # get and save params
             for col in df.columns.to_list():
                 index = df.columns.to_list().index(col)
                 ind = str(index).zfill(2)
                 vars()["param_df_{}".format(ind)] = pd.DataFrame(self.get_params(df.iloc[:, index], df.index))
-                vars()["param_df_{}".format(ind)].to_pickle(self.loc + '/' + self.params_path + "/param_df_{}".format(ind) + ".pkl")
+                vars()["param_df_{}".format(ind)].to_pickle(self.loc + '/' + str(self.alpha) + '/' + self.params_path + "/param_df_{}".format(ind) + ".pkl")
                 params_dict["param_df_{}".format(ind)] = vars()["param_df_{}".format(ind)]
         else:
             # load params
-            chdir(self.loc + '/' + self.params_path)
+            chdir(self.loc + '/' + str(self.alpha) + '/' + self.params_path)
             for file in glob("*df*"):
 #                 print("...loading DataFrame - {}".format(splitext(file)[0]))
                 vars()[splitext(file)[0]] = pd.read_pickle(file)
@@ -206,9 +208,10 @@ class ES(preprocess):
 
             chdir("..")
             chdir("..")
+            chdir('..')
 
-        if isdir(self.loc + '/' + self.internals_path) == False:
-            makedirs(self.loc + '/' + self.internals_path)
+        if isdir(self.loc + '/' + str(self.alpha) + '/' + self.internals_path) == False:
+            makedirs(self.loc + '/' + str(self.alpha) + '/' + self.internals_path)
             # get and save internals
             for col in df.columns.to_list():
                 i = df.columns.to_list().index(col)
@@ -220,7 +223,7 @@ class ES(preprocess):
             print('[INFO] internals executed')
         else:
             # load internals
-            chdir(self.loc + '/' + self.internals_path + "/")
+            chdir(self.loc + '/' + str(self.alpha) + '/' + self.internals_path + "/")
             for file in glob("*df*"):
 #                 print("...loading DataFrame - {}".format(splitext(file)[0]))
                 vars()[splitext(file)[0]] = pd.read_pickle(file)
@@ -229,6 +232,7 @@ class ES(preprocess):
 
             chdir("..")
             chdir("..")
+            chdir('..')
             
         return params_dict, internals_dict
     
@@ -433,8 +437,8 @@ class lstm():
         forecasts.plot(y = [self.y_col[1] + '_pred', self.y_col[1] + '_true'])
         
 #         if isdir(self.results_path) == False:
-        makedirs(self.loc + '/' + self.results_path, exist_ok = True)
-        forecasts.to_pickle(self.loc + '/' + self.results_path + 'forecast.pkl')
+        makedirs(self.loc + '/' + str(self.alpha) + '/' + self.results_path, exist_ok = True)
+        forecasts.to_pickle(self.loc + '/' + str(self.alpha) + '/' + self.results_path + 'forecast.pkl')
         print('[INFO] forecasts saved in results folder')
         return forecasts
 
@@ -472,8 +476,8 @@ class lstm():
         pi.plot(y = [self.y_col[0] + '_true', self.y_col[0] + '_lower', self.y_col[0] + '_upper'])
         pi.plot(y = [self.y_col[1] + '_true', self.y_col[1] + '_lower', self.y_col[1] + '_upper'])
 #         if isdir(self.results_path) == False:
-        makedirs(self.loc + '/' + self.results_path, exist_ok = True)
-        pi.to_pickle(self.loc + '/' + self.results_path + 'pi.pkl')
+        makedirs(self.loc + '/' + str(self.alpha) + '/' + self.results_path, exist_ok = True)
+        pi.to_pickle(self.loc + '/' + str(self.alpha) + '/' + self.results_path + 'pi.pkl')
         print('[INFO] prediction intervals saved in results folder')
         return pi
 
@@ -502,9 +506,9 @@ class lstm():
         forecasts.plot(y = [self.y_col[0] + '_pred', self.y_col[0] + '_true'])
         forecasts.plot(y = [self.y_col[1] + '_pred', self.y_col[1] + '_true'])
         
-        if isdir(self.loc + '/' + self.results_path) == False:
-            mkdir(self.loc + '/' + self.results_path)
-        forecasts.to_pickle(self.loc + '/' + self.results_path + 'forecast.pkl')
+        if isdir(self.loc + '/' + str(self.alpha) + '/' + self.results_path) == False:
+            mkdir(self.loc + '/' + str(self.alpha) + '/' + self.results_path)
+        forecasts.to_pickle(self.loc + '/' + str(self.alpha) + '/' + self.results_path + 'forecast.pkl')
         print('[INFO] forecasts saved in results folder')
         return forecasts
 
@@ -542,9 +546,9 @@ class lstm():
 #         print(pi)
         pi.plot(y = [self.y_col[0] + '_true', self.y_col[0] + '_lower', self.y_col[0] + '_upper'])
         pi.plot(y = [self.y_col[1] + '_true', self.y_col[1] + '_lower', self.y_col[1] + '_upper'])
-        if isdir(self.loc + '/' + self.results_path) == False:
-            mkdir(self.loc + '/' + self.results_path)
-        pi.to_pickle(self.loc + '/' + self.results_path + 'pi.pkl')
+        if isdir(self.loc + '/' + str(self.alpha) + '/' + self.results_path) == False:
+            mkdir(self.loc + '/' + str(self.alpha) + '/' + self.results_path)
+        pi.to_pickle(self.loc + '/' + str(self.alpha) + '/' + self.results_path + 'pi.pkl')
         print('[INFO] prediction intervals saved in results folder')
         return pi
 
@@ -688,8 +692,8 @@ class stats():
         forecasts.plot(y = [self.y_col[1] + '_pred', self.y_col[1] + '_true'])
         
 #         if isdir(self.results_path) == False:
-        makedirs(self.loc + '/' + self.results_path, exist_ok = True)
-        forecasts.to_pickle(self.loc + '/' + self.results_path + 'forecast.pkl')
+        makedirs(self.loc + '/' + str(self.alpha) + '/' + self.results_path, exist_ok = True)
+        forecasts.to_pickle(self.loc + '/' + str(self.alpha) + '/' + self.results_path + 'forecast.pkl')
         print('[INFO] forecasts saved in results folder')
         return forecasts
     
@@ -726,7 +730,7 @@ class stats():
         pi.plot(y = [self.y_col[0] + '_true', self.y_col[0] + '_lower', self.y_col[0] + '_upper'])
         pi.plot(y = [self.y_col[1] + '_true', self.y_col[1] + '_lower', self.y_col[1] + '_upper'])
 #         if isdir(self.results_path) == False:
-        makedirs(self.loc + '/' + self.results_path, exist_ok = True)
-        pi.to_pickle(self.loc + '/' + self.results_path + 'pi.pkl')
+        makedirs(self.loc + '/' + str(self.alpha) + '/' + self.results_path, exist_ok = True)
+        pi.to_pickle(self.loc + '/' + str(self.alpha) + '/' + self.results_path + 'pi.pkl')
         print('[INFO] prediction intervals saved in results folder')
         return pi

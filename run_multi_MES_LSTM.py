@@ -25,6 +25,7 @@ print(tf.config.list_physical_devices('GPU'))
 parser = argparse.ArgumentParser()
 parser.add_argument("--country", type = str, required = True, help = "which country to execute model on")
 parser.add_argument('--thresh', type = float, required = False, help = 'threshold of missing data if column is to be deleted')
+parser.add_argument('--alpha', type = float, required = False, help = 'significance level for prediction intervals')
 args = parser.parse_args()
 
 
@@ -57,16 +58,16 @@ runs = 35
 
 # for country in SADC:
 print(f'[INFO] processing for: {args.country}')
-results_deaths = pd.DataFrame(columns = ['smape_meslstm', 'mase_meslstm', 'mis_meslstm', 'cov_meslstm',
-                                         'smape_lstm', 'mase_lstm', 'mis_lstm', 'cov_lstm',
-                                         'smape_varmax', 'mase_varmax', 'mis_varmax', 'cov_varmax',
-                                         'smape_sarimax', 'mase_sarimax', 'mis_sarimax', 'cov_sarimax',
-                                         'smape_mlr', 'mase_mlr', 'mis_mlr', 'cov_mlr'])
-results_cases = pd.DataFrame(columns = ['smape_meslstm', 'mase_meslstm', 'mis_meslstm', 'cov_meslstm',
-                                         'smape_lstm', 'mase_lstm', 'mis_lstm', 'cov_lstm',
-                                         'smape_varmax', 'mase_varmax', 'mis_varmax', 'cov_varmax',
-                                         'smape_sarimax', 'mase_sarimax', 'mis_sarimax', 'cov_sarimax',
-                                         'smape_mlr', 'mase_mlr', 'mis_mlr', 'cov_mlr'])
+results_deaths = pd.DataFrame(columns = ['smape_meslstm', 'rmse_meslstm', 'mis_meslstm', 'cov_meslstm',
+                                         'smape_lstm', 'rmse_lstm', 'mis_lstm', 'cov_lstm',
+                                         'smape_varmax', 'rmse_varmax', 'mis_varmax', 'cov_varmax',
+                                         'smape_sarimax', 'rmse_sarimax', 'mis_sarimax', 'cov_sarimax',
+                                         'smape_mlr', 'rmse_mlr', 'mis_mlr', 'cov_mlr'])
+results_cases = pd.DataFrame(columns = ['smape_meslstm', 'rmse_meslstm', 'mis_meslstm', 'cov_meslstm',
+                                         'smape_lstm', 'rmse_lstm', 'mis_lstm', 'cov_lstm',
+                                         'smape_varmax', 'rmse_varmax', 'mis_varmax', 'cov_varmax',
+                                         'smape_sarimax', 'rmse_sarimax', 'mis_sarimax', 'cov_sarimax',
+                                         'smape_mlr', 'rmse_mlr', 'mis_mlr', 'cov_mlr'])
 for run in range(runs):
     print(f'[INFO] trial number: {str(run)} for country: {args.country}') 
 
@@ -84,14 +85,14 @@ for run in range(runs):
     scaled_df
 
     # exponential smoothing layer
-    mes_layer = ES(loc = args.country)
+    mes_layer = ES(loc = args.country, alpha = args.alpha)
     params, internals = mes_layer.es(scaled_df)
     es_scaled, df_trend, df_seas = mes_layer.deTS(scaled_df, internals)
 
     es_scaled
 
     # deep learning layer
-    dl_layer = lstm(loc = args.country)
+    dl_layer = lstm(loc = args.country, alpha = args.alpha)
     train, valid, test, x_train, y_train, x_valid, y_valid, x_test = dl_layer.split(es_scaled)
     y_pred_es_scaled = dl_layer.forecast_model(test, x_train, y_train, x_valid, y_valid, x_test)
     forecasts = dl_layer.reTS(y_pred_es_scaled, es_scaled, train, valid, df_trend, df_seas, df_scaler, df)
@@ -106,8 +107,8 @@ for run in range(runs):
     result_cases = []
     result_deaths.append(smape(forecasts['total_deaths_true'], forecasts['total_deaths_pred']))
     result_cases.append(smape(forecasts['total_cases_true'], forecasts['total_cases_pred']))
-    result_deaths.append(mase(train, forecasts['total_deaths_true'], forecasts['total_deaths_pred']))
-    result_cases.append(mase(train, forecasts['total_cases_true'], forecasts['total_cases_pred']))
+    result_deaths.append(rmse(forecasts['total_deaths_true'], forecasts['total_deaths_pred']))
+    result_cases.append(rmse(forecasts['total_cases_true'], forecasts['total_cases_pred']))
     result_deaths.append(mis(pi['total_deaths_lower'].values, pi['total_deaths_upper'].values, pi['total_deaths_true'].values, alpha = dl_layer.alpha))
     result_cases.append(mis(pi['total_cases_lower'].values, pi['total_cases_upper'].values, pi['total_cases_true'].values, alpha = dl_layer.alpha))
     result_deaths.append(coverage(pi['total_deaths_lower'].values, pi['total_deaths_upper'].values, pi['total_deaths_true'].values))
@@ -118,7 +119,7 @@ for run in range(runs):
 
     # LSTM
 
-    dl_layer = lstm(results_path = 'results/pure_lstm/', loc = args.country)
+    dl_layer = lstm(results_path = 'results/pure_lstm/', loc = args.country, alpha = args.alpha)
     train, valid, test, x_train, y_train, x_valid, y_valid, x_test = dl_layer.split(scaled_df)
     y_pred_scaled = dl_layer.forecast_model(test, x_train, y_train, x_valid, y_valid, x_test)
     forecasts = dl_layer.descale(y_pred_scaled, scaled_df, train, valid, df_scaler, df)
@@ -130,8 +131,8 @@ for run in range(runs):
     # metrics
     result_deaths.append(smape(forecasts['total_deaths_true'], forecasts['total_deaths_pred']))
     result_cases.append(smape(forecasts['total_cases_true'], forecasts['total_cases_pred']))
-    result_deaths.append(mase(train, forecasts['total_deaths_true'], forecasts['total_deaths_pred']))
-    result_cases.append(mase(train, forecasts['total_cases_true'], forecasts['total_cases_pred']))
+    result_deaths.append(rmse(forecasts['total_deaths_true'], forecasts['total_deaths_pred']))
+    result_cases.append(rmse(forecasts['total_cases_true'], forecasts['total_cases_pred']))
     result_deaths.append(mis(pi['total_deaths_lower'].values, pi['total_deaths_upper'].values, pi['total_deaths_true'].values, alpha = dl_layer.alpha))
     result_cases.append(mis(pi['total_cases_lower'].values, pi['total_cases_upper'].values, pi['total_cases_true'].values, alpha = dl_layer.alpha))
     result_deaths.append(coverage(pi['total_deaths_lower'].values, pi['total_deaths_upper'].values, pi['total_deaths_true'].values))
@@ -144,7 +145,7 @@ for run in range(runs):
 
     # VARMAX
 
-    bench = stats(loc = args.country)
+    bench = stats(loc = args.country, alpha = args.alpha)
     train, test, x_train, x_test = bench.split(scaled_df)
     y_pred_scaled, pi_pred_scaled = bench.forecast_varmax(test, x_train, y_train, x_test)
     forecasts = bench.descale(y_pred_scaled, scaled_df, train, valid, df_scaler, df)
@@ -153,8 +154,8 @@ for run in range(runs):
 
     result_deaths.append(smape(forecasts['total_deaths_true'], forecasts['total_deaths_pred']))
     result_cases.append(smape(forecasts['total_cases_true'], forecasts['total_cases_pred']))
-    result_deaths.append(mase(train, forecasts['total_deaths_true'], forecasts['total_deaths_pred']))
-    result_cases.append(mase(train, forecasts['total_cases_true'], forecasts['total_cases_pred']))
+    result_deaths.append(rmse(forecasts['total_deaths_true'], forecasts['total_deaths_pred']))
+    result_cases.append(rmse(forecasts['total_cases_true'], forecasts['total_cases_pred']))
     result_deaths.append(mis(pi['total_deaths_lower'].values, pi['total_deaths_upper'].values, pi['total_deaths_true'].values, alpha = dl_layer.alpha))
     result_cases.append(mis(pi['total_cases_lower'].values, pi['total_cases_upper'].values, pi['total_cases_true'].values, alpha = dl_layer.alpha))
     result_deaths.append(coverage(pi['total_deaths_lower'].values, pi['total_deaths_upper'].values, pi['total_deaths_true'].values))
@@ -162,7 +163,7 @@ for run in range(runs):
 
     # SARIMAX
 
-    bench = stats(loc = args.country, results_path = 'results/sarimax/')
+    bench = stats(loc = args.country, results_path = 'results/sarimax/', alpha = args.alpha)
     # train, test, x_train, x_test = bench.split(scaled_df)
     y_pred_scaled, pi_pred_scaled = bench.forecast_sarimax(test, x_train, y_train, x_test)
     forecasts = bench.descale(y_pred_scaled, scaled_df, train, valid, df_scaler, df)
@@ -171,8 +172,8 @@ for run in range(runs):
 
     result_deaths.append(smape(forecasts['total_deaths_true'], forecasts['total_deaths_pred']))
     result_cases.append(smape(forecasts['total_cases_true'], forecasts['total_cases_pred']))
-    result_deaths.append(mase(train, forecasts['total_deaths_true'], forecasts['total_deaths_pred']))
-    result_cases.append(mase(train, forecasts['total_cases_true'], forecasts['total_cases_pred']))
+    result_deaths.append(rmse(forecasts['total_deaths_true'], forecasts['total_deaths_pred']))
+    result_cases.append(rmse(forecasts['total_cases_true'], forecasts['total_cases_pred']))
     result_deaths.append(mis(pi['total_deaths_lower'].values, pi['total_deaths_upper'].values, pi['total_deaths_true'].values, alpha = dl_layer.alpha))
     result_cases.append(mis(pi['total_cases_lower'].values, pi['total_cases_upper'].values, pi['total_cases_true'].values, alpha = dl_layer.alpha))
     result_deaths.append(coverage(pi['total_deaths_lower'].values, pi['total_deaths_upper'].values, pi['total_deaths_true'].values))
@@ -181,7 +182,7 @@ for run in range(runs):
 
     # MLR
 
-    bench = stats(loc = args.country, results_path = 'results/mlr/')
+    bench = stats(loc = args.country, results_path = 'results/mlr/', alpha = args.alpha)
     # train, test, x_train, x_test = bench.split(scaled_df)
     y_pred_scaled, pi_pred_scaled = bench.forecast_mlr(test, x_train, y_train, x_test)
     forecasts = bench.descale(y_pred_scaled, scaled_df, train, valid, df_scaler, df)
@@ -189,8 +190,8 @@ for run in range(runs):
 
     result_deaths.append(smape(forecasts['total_deaths_true'], forecasts['total_deaths_pred']))
     result_cases.append(smape(forecasts['total_cases_true'], forecasts['total_cases_pred']))
-    result_deaths.append(mase(train, forecasts['total_deaths_true'], forecasts['total_deaths_pred']))
-    result_cases.append(mase(train, forecasts['total_cases_true'], forecasts['total_cases_pred']))
+    result_deaths.append(rmse(forecasts['total_deaths_true'], forecasts['total_deaths_pred']))
+    result_cases.append(rmse(forecasts['total_cases_true'], forecasts['total_cases_pred']))
     result_deaths.append(mis(pi['total_deaths_lower'].values, pi['total_deaths_upper'].values, pi['total_deaths_true'].values, alpha = dl_layer.alpha))
     result_cases.append(mis(pi['total_cases_lower'].values, pi['total_cases_upper'].values, pi['total_cases_true'].values, alpha = dl_layer.alpha))
     result_deaths.append(coverage(pi['total_deaths_lower'].values, pi['total_deaths_upper'].values, pi['total_deaths_true'].values))
@@ -208,7 +209,7 @@ for run in range(runs):
 print('[INFO] ---------------------- DONE -----------------------------')
 
 
-results_deaths.to_pickle(args.country + '/results/' + 'multiple_runs_deaths.pkl')
-results_cases.to_pickle(args.country + '/results/' + 'multiple_runs_cases.pkl')
+results_deaths.to_pickle(args.country + '/' + str(args.alpha) + '/results/' + 'multiple_runs_deaths.pkl')
+results_cases.to_pickle(args.country + '/' + str(args.alpha) + '/results/' + 'multiple_runs_cases.pkl')
 
     
