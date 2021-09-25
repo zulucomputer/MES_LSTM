@@ -1,6 +1,9 @@
-from numpy import count_nonzero, nansum, isnan, diff, abs, mean
+from numpy import count_nonzero, nansum, isnan, diff, abs, mean, sqrt
 
-alpha = 0.05 # default
+# alpha = 0.05 # default
+
+def rmse(y, y_hat):
+    return sqrt(((y_hat - y) ** 2).mean())
 
 def smape(y, y_hat):
     tmp = 2 * abs(y_hat - y) / (abs(y) + abs(y_hat))
@@ -26,7 +29,7 @@ def mase(y_train, y, y_hat):
     errors = abs(y - y_hat)
     return errors.mean()/d
 
-def mis(lower_PI, upper_PI, actual, alpha = alpha):
+def mis(lower_PI, upper_PI, actual, alpha):
 #    alpha = alpha/100 # percentile and this score use different scales for alpha
     s = list()
     for i in range(len(lower_PI)):

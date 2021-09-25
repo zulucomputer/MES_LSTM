@@ -53,7 +53,7 @@ for arg, value in sorted(vars(args).items()):
 
 
 
-runs = 35                          
+runs = 36                          
 # SADC = ['Angola', 'Botswana', 'Comoros', 'Democratic Republic of Congo', 'Eswatini', 'Lesotho', 'Madagascar', 'Malawi', 'Mauritius', 'Mozambique', 'Namibia', 'South Africa', 'Tanzania', 'Zambia', 'Zimbabwe'] # all except Seychelles
 
 # for country in SADC:
@@ -114,12 +114,12 @@ for run in range(runs):
     result_deaths.append(coverage(pi['total_deaths_lower'].values, pi['total_deaths_upper'].values, pi['total_deaths_true'].values))
     result_cases.append(coverage(pi['total_cases_lower'].values, pi['total_cases_upper'].values, pi['total_cases_true'].values))
 
-    tf.keras.backend.clear_session()
+#     tf.keras.backend.clear_session()
 
 
     # LSTM
 
-    dl_layer = lstm(results_path = 'results/pure_lstm/', loc = args.country, alpha = args.alpha)
+    dl_layer = lstm(results_path = 'results/pure_lstm/', loc = args.country, alpha = args.alpha, lstm_size = 70, epochs = 35)
     train, valid, test, x_train, y_train, x_valid, y_valid, x_test = dl_layer.split(scaled_df)
     y_pred_scaled = dl_layer.forecast_model(test, x_train, y_train, x_valid, y_valid, x_test)
     forecasts = dl_layer.descale(y_pred_scaled, scaled_df, train, valid, df_scaler, df)
@@ -139,7 +139,7 @@ for run in range(runs):
     result_cases.append(coverage(pi['total_cases_lower'].values, pi['total_cases_upper'].values, pi['total_cases_true'].values))
 
 
-    tf.keras.backend.clear_session()
+#     tf.keras.backend.clear_session()
 
     #-----
 
@@ -205,10 +205,13 @@ for run in range(runs):
 #         results_cases.append(result_cases)
     print(results_deaths.tail())
     print(results_cases.tail())
+#     tf.keras.backend.clear_session()
     
 print('[INFO] ---------------------- DONE -----------------------------')
 
 
+results_deaths = results_deaths.iloc[1:, :]
+results_cases = results_cases.iloc[1:, :]
 results_deaths.to_pickle(args.country + '/' + str(args.alpha) + '/results/' + 'multiple_runs_deaths.pkl')
 results_cases.to_pickle(args.country + '/' + str(args.alpha) + '/results/' + 'multiple_runs_cases.pkl')
 
