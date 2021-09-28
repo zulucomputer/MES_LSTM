@@ -274,8 +274,8 @@ class lstm():
                  n_input_train = 14, # how many samples/rows/timesteps to look in the past in order to forecast the next sample
                  b_size_train = 32, # Number of timeseries samples in each batch
                  n_input_valid = 7, # how many samples/rows/timesteps to look in the past in order to forecast the next s
-                 b_size_valid = 128, # Number of timeseries samples in each batch
-                 lstm_size = 70,
+                 b_size_valid = 32, # Number of timeseries samples in each batch
+                 lstm_size = 100,
                  activation = 'relu',
                  optimizer = 'adam',
                  loss = 'mse',
@@ -360,7 +360,7 @@ class lstm():
         
         test_generator = TimeseriesGenerator(x_test, np.zeros(test[self.y_col].shape), length = self.n_input_train, batch_size = self.b_size_train)
         y_pred_es_scaled = model.predict(test_generator)
-#         tf.keras.backend.clear_session()
+        tf.keras.backend.clear_session()
         return y_pred_es_scaled
     
     
@@ -410,7 +410,7 @@ class lstm():
         pi_pred_es_scaled[self.y_col[1] + '_upper'] = np.quantile(vars()["pi_{}".format(self.y_col[1])], upper_q, axis = 1)
         
         print('[INFO] prediction intervals computed')
-#         tf.keras.backend.clear_session()
+        tf.keras.backend.clear_session()
         return pi_pred_es_scaled
     
     

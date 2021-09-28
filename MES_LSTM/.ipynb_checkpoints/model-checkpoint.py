@@ -22,6 +22,8 @@ from statsmodels.tsa.api import SARIMAX, VARMAX, ExponentialSmoothing
 from sklearn.linear_model import LinearRegression
 from statsmodels.api import OLS
 
+import warnings
+warnings.simplefilter('ignore')
 
 
 class preprocess():
@@ -218,7 +220,7 @@ class ES(preprocess):
                 ind = str(i).zfill(2)
 #                 print("...executing for column {} - {}".format(i, col))
                 vars()["int_df_{}".format(ind)] = self.get_internals(df.iloc[:, i], df.index)
-                vars()["int_df_{}".format(ind)].to_pickle(self.loc + '/' + self.internals_path + "/int_df_{}".format(ind) + ".pkl")
+                vars()["int_df_{}".format(ind)].to_pickle(self.loc + '/' + str(self.alpha) + '/' + self.internals_path + "/int_df_{}".format(ind) + ".pkl")
                 internals_dict["int_df_{}".format(ind)] = vars()["int_df_{}".format(ind)]
             print('[INFO] internals executed')
         else:
@@ -272,14 +274,15 @@ class lstm():
                  n_input_train = 14, # how many samples/rows/timesteps to look in the past in order to forecast the next sample
                  b_size_train = 32, # Number of timeseries samples in each batch
                  n_input_valid = 7, # how many samples/rows/timesteps to look in the past in order to forecast the next s
-                 b_size_valid = 128, # Number of timeseries samples in each batch
-                 lstm_size = 150,
+                 b_size_valid = 32, # Number of timeseries samples in each batch
+                 lstm_size = 100,
                  activation = 'relu',
                  optimizer = 'adam',
                  loss = 'mse',
                  epochs = 15,
                  runs = 100,
                  alpha = 0.1,
+                 verbose = 0,
                  loc = 'United Kingdom',
                  results_path = 'results/mes_lstm/'
                 ):
@@ -301,6 +304,7 @@ class lstm():
         self.alpha = alpha
         self.results_path = results_path
         self.loc = loc
+        self.verbose = verbose
         
         
         
@@ -320,8 +324,8 @@ class lstm():
         y_valid = valid[self.y_col].copy()
         x_test = test.drop(self.y_col, axis = 1).copy() # split x for test
         
-        print('[INFO] data shape: train = {}, valid = {}, test = {}, x_train = {}, y_train = {}, x_valid = {}, y_valid = {}, x_test = {}'.format(
-            train.shape, valid.shape, test.shape, x_train.shape, y_train.shape, x_valid.shape, y_valid.shape, x_test.shape))
+#         print('[INFO] data shape: train = {}, valid = {}, test = {}, x_train = {}, y_train = {}, x_valid = {}, y_valid = {}, x_test = {}'.format(
+#             train.shape, valid.shape, test.shape, x_train.shape, y_train.shape, x_valid.shape, y_valid.shape, x_test.shape))
         return train, valid, test, x_train, y_train, x_valid, y_valid, x_test
     
     
@@ -337,12 +341,14 @@ class lstm():
         valid_generator = TimeseriesGenerator(x_valid.values, y_valid.values, length = self.n_input_valid, batch_size = self.b_size_valid)
 
         model = Sequential()
-        model.add(LSTM(self.lstm_size, activation = self.activation, input_shape = (self.n_input_train, n_features_train)))
+        model.add(LSTM(self.lstm_size, activation = self.activation, return_sequences = False, input_shape = (self.n_input_train, n_features_train)))
+#         model.add(LSTM(int(np.floor(self.lstm_size/2)), return_sequences = True, activation = self.activation))
+#         model.add(LSTM(int(np.floor(self.lstm_size/4)), activation = self.activation))
         model.add(Dense(len(self.y_col)))
         model.compile(optimizer = self.optimizer, loss = self.loss)
-        print(model.summary())
+#         print(model.summary())
         
-        model.fit_generator(train_generator, validation_data = valid_generator, epochs = self.epochs)
+        model.fit_generator(train_generator, validation_data = valid_generator, epochs = self.epochs, verbose = self.verbose)
         train_loss_per_epoch = model.history.history['loss']
         valid_loss_per_epoch = model.history.history['val_loss']
         
@@ -354,6 +360,7 @@ class lstm():
         
         test_generator = TimeseriesGenerator(x_test, np.zeros(test[self.y_col].shape), length = self.n_input_train, batch_size = self.b_size_train)
         y_pred_es_scaled = model.predict(test_generator)
+        tf.keras.backend.clear_session()
         return y_pred_es_scaled
     
     
@@ -372,9 +379,9 @@ class lstm():
         model.add(LSTM(self.lstm_size, activation = self.activation, input_shape = (self.n_input_train, n_features_train)))
         model.add(tfp.layers.DenseFlipout(len(self.y_col)))
         model.compile(optimizer = self.optimizer, loss = self.loss)
-        print(model.summary())
+#         print(model.summary())
         
-        model.fit_generator(train_generator, validation_data = valid_generator, epochs = self.epochs)
+        model.fit_generator(train_generator, validation_data = valid_generator, epochs = self.epochs, verbose = self.verbose)
         train_loss_per_epoch = model.history.history['loss']
         valid_loss_per_epoch = model.history.history['val_loss']
         
@@ -402,8 +409,8 @@ class lstm():
         pi_pred_es_scaled[self.y_col[0] + '_upper'] = np.quantile(vars()["pi_{}".format(self.y_col[0])], upper_q, axis = 1)
         pi_pred_es_scaled[self.y_col[1] + '_upper'] = np.quantile(vars()["pi_{}".format(self.y_col[1])], upper_q, axis = 1)
         
-#         print(pi_pred_es_scaled.head())
         print('[INFO] prediction intervals computed')
+        tf.keras.backend.clear_session()
         return pi_pred_es_scaled
     
     
@@ -593,8 +600,8 @@ class stats():
         y_train = train[self.y_col].copy()
         x_test = test.drop(self.y_col, axis = 1).copy() # split x for test
 
-        print('[INFO] data shape: train = {}, test = {}, x_train = {}, y_train = {}, x_test = {}'.format(
-            train.shape, test.shape, x_train.shape, y_train.shape, x_test.shape))
+#         print('[INFO] data shape: train = {}, test = {}, x_train = {}, y_train = {}, x_test = {}'.format(
+#             train.shape, test.shape, x_train.shape, y_train.shape, x_test.shape))
         return train, test, x_train, x_test
     
     

@@ -1,8 +1,11 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-#TODO increase epochs, bash script for all runs, logger files, run statistics
-# preamble
+
+import os
+os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices'
+os.environ['TF_CPP_MIN_LOG_LEVEL']='2'
+
 
 from os.path import join
 from os import makedirs
@@ -54,42 +57,41 @@ for arg, value in sorted(vars(args).items()):
 
 
 runs = 36                          
-# SADC = ['Angola', 'Botswana', 'Comoros', 'Democratic Republic of Congo', 'Eswatini', 'Lesotho', 'Madagascar', 'Malawi', 'Mauritius', 'Mozambique', 'Namibia', 'South Africa', 'Tanzania', 'Zambia', 'Zimbabwe'] # all except Seychelles
 
-# for country in SADC:
-print(f'[INFO] processing for: {args.country}')
+# MES_RNN model
+
+# pre-processing layer
+if args.thresh:
+    pre_layer = preprocess(first_time = 0, loc = args.country.replace('_', ' '), thresh = args.thresh) # change first_time to 1 if first time running to download data
+else:
+    pre_layer = preprocess(first_time = 0, loc = args.country.replace('_', ' ')) # use default thresh
+df = pre_layer.load_data()
+df = pre_layer.clean_data(df)
+df = pre_layer.fill_missing(df)
+scaled_df, df_scaler = pre_layer.scale(df)
+scaled_df
+
+# exponential smoothing layer
+mes_layer = ES(loc = args.country, alpha = args.alpha)
+params, internals = mes_layer.es(scaled_df)
+es_scaled, df_trend, df_seas = mes_layer.deTS(scaled_df, internals)
+
+es_scaled
+
 results_deaths = pd.DataFrame(columns = ['smape_meslstm', 'rmse_meslstm', 'mis_meslstm', 'cov_meslstm',
-                                         'smape_lstm', 'rmse_lstm', 'mis_lstm', 'cov_lstm',
-                                         'smape_varmax', 'rmse_varmax', 'mis_varmax', 'cov_varmax',
-                                         'smape_sarimax', 'rmse_sarimax', 'mis_sarimax', 'cov_sarimax',
-                                         'smape_mlr', 'rmse_mlr', 'mis_mlr', 'cov_mlr'])
+                                     'smape_lstm', 'rmse_lstm', 'mis_lstm', 'cov_lstm',
+                                     'smape_varmax', 'rmse_varmax', 'mis_varmax', 'cov_varmax',
+                                     'smape_sarimax', 'rmse_sarimax', 'mis_sarimax', 'cov_sarimax',
+                                     'smape_mlr', 'rmse_mlr', 'mis_mlr', 'cov_mlr'])
 results_cases = pd.DataFrame(columns = ['smape_meslstm', 'rmse_meslstm', 'mis_meslstm', 'cov_meslstm',
-                                         'smape_lstm', 'rmse_lstm', 'mis_lstm', 'cov_lstm',
-                                         'smape_varmax', 'rmse_varmax', 'mis_varmax', 'cov_varmax',
-                                         'smape_sarimax', 'rmse_sarimax', 'mis_sarimax', 'cov_sarimax',
-                                         'smape_mlr', 'rmse_mlr', 'mis_mlr', 'cov_mlr'])
+                                     'smape_lstm', 'rmse_lstm', 'mis_lstm', 'cov_lstm',
+                                     'smape_varmax', 'rmse_varmax', 'mis_varmax', 'cov_varmax',
+                                     'smape_sarimax', 'rmse_sarimax', 'mis_sarimax', 'cov_sarimax',
+                                     'smape_mlr', 'rmse_mlr', 'mis_mlr', 'cov_mlr'])
 for run in range(runs):
+    
+    print(f'[INFO] processing for: {args.country}')
     print(f'[INFO] trial number: {str(run)} for country: {args.country}') 
-
-    # MES_RNN model
-
-    # pre-processing layer
-    if args.thresh:
-        pre_layer = preprocess(first_time = 0, loc = args.country.replace('_', ' '), thresh = args.thresh) # change first_time to 1 if first time running to download data
-    else:
-        pre_layer = preprocess(first_time = 0, loc = args.country.replace('_', ' ')) # use default thresh
-    df = pre_layer.load_data()
-    df = pre_layer.clean_data(df)
-    df = pre_layer.fill_missing(df)
-    scaled_df, df_scaler = pre_layer.scale(df)
-    scaled_df
-
-    # exponential smoothing layer
-    mes_layer = ES(loc = args.country, alpha = args.alpha)
-    params, internals = mes_layer.es(scaled_df)
-    es_scaled, df_trend, df_seas = mes_layer.deTS(scaled_df, internals)
-
-    es_scaled
 
     # deep learning layer
     dl_layer = lstm(loc = args.country, alpha = args.alpha)
@@ -119,7 +121,15 @@ for run in range(runs):
 
     # LSTM
 
-    dl_layer = lstm(results_path = 'results/pure_lstm/', loc = args.country, alpha = args.alpha, lstm_size = 70, epochs = 35)
+    dl_layer = lstm(results_path = 'results/pure_lstm/',
+                    loc = args.country,
+                    alpha = args.alpha,
+                    lstm_size = 50,
+                    epochs = 25,
+                    n_input_train = 14,
+                    b_size_train = 16,
+                    n_input_valid = 7,
+                    b_size_valid = 16)
     train, valid, test, x_train, y_train, x_valid, y_valid, x_test = dl_layer.split(scaled_df)
     y_pred_scaled = dl_layer.forecast_model(test, x_train, y_train, x_valid, y_valid, x_test)
     forecasts = dl_layer.descale(y_pred_scaled, scaled_df, train, valid, df_scaler, df)
