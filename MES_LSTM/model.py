@@ -17,7 +17,6 @@ from os import chdir
 from os.path import splitext, split
 import tensorflow as tf
 import tensorflow_probability as tfp
-# from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from statsmodels.tsa.api import SARIMAX, VARMAX, ExponentialSmoothing
 from sklearn.linear_model import LinearRegression
 from statsmodels.api import OLS
@@ -37,7 +36,9 @@ class preprocess():
                  drop = ['smooth', 'new', 'per', 'tests_units', 'Unnamed: 0'],
                  collapse = ['iso_code', 'continent', 'location'],
                  thresh = 0.6,
-                 feature_range = (1, 2),
+                 feature_range = (1e-5, 1),
+                 y_col = ['total_deaths', 'total_cases'], # define y variable, i.e., what we want to predict
+                 shift = 60,
                  first_time = 0):
         self.data_path = data_path
         self.loc = loc
@@ -46,6 +47,8 @@ class preprocess():
         self.first_time = first_time
         self.collapse = collapse
         self.feature_range = feature_range
+        self.y_col = y_col
+        self.shift = shift
     
     def load_data(self):
         """
@@ -57,12 +60,9 @@ class preprocess():
             makedirs(split(self.data_path)[0] + '/', exist_ok = True)
             url = 'https://covid.ourworldindata.org/data/owid-covid-data.csv' # get latest data
             df = pd.read_csv(url)
-            print(df.to_string())
             df.to_csv(self.data_path)
         else:        
             df = pd.read_csv(self.data_path)
-#         print('[INFO] countries')
-#         print(df.location.unique())
         df = df[df.location.str.contains(self.loc)] # select a country to model
         return(df)
     
@@ -84,12 +84,8 @@ class preprocess():
 
 
     def fill_missing(self, df):
-        print(self.missing_values(df))
-        print('[INFO] filling NA')
+        print('[INFO] imputing NA')
         df = df.dropna(thresh = df.shape[0] * self.thresh, how = 'all', axis = 1)
-        print(self.missing_values(df))
-        
-        print('[INFO] imputing categorical missing values')
         num_cols = df._get_numeric_data().columns
         imp = IterativeImputer(max_iter=10, random_state=0)
         imp.fit(df[num_cols])
@@ -101,7 +97,6 @@ class preprocess():
     def missing_values(self, df):
         """
         tracks missing values
-
         """
         mis_val = df.isnull().sum()
         mis_val_percent = 100 * df.isnull().sum() / len(df)
@@ -129,6 +124,25 @@ class preprocess():
         print('[INFO] data scaled')
         return scaled_df, df_scaler
 
+    def reindex(self, df):
+        """
+        reindexes the dataframe to eliminate leakage
+        
+        """
+        df[df.values <= 0] = 1e-10 # strictly positive
+        df.index = pd.DatetimeIndex(df.index) # enables date manipulation
+        hist = df.copy() # historical data
+        y = df[self.y_col]
+
+        hist.index = df.index.shift(-self.shift, freq = 'D')
+        hist = hist.shift(self.shift).dropna(axis = 0)
+        y.index = df.index.shift(self.shift, freq = 'D')
+        y = y.shift(-self.shift).dropna(axis = 0)
+
+        df = hist.copy()
+        df[self.y_col] = y.values
+        return hist, df
+
         
 class ES(preprocess):
     """
@@ -139,7 +153,7 @@ class ES(preprocess):
     def __init__(self,
                  internals_path = 'internals',
                  params_path = 'params',
-                 alpha = 0.1,
+                 alpha = 0.2,
                  loc = 'United Kingdom'):
         
         self.internals_path = internals_path
@@ -173,9 +187,6 @@ class ES(preprocess):
         results["Mult_Trend_Add_Seas"] = [fit7.params[p] for p in params] + [fit7.sse]
         results["Add_Trend_Mult_Seas"] = [fit8.params[p] for p in params] + [fit8.sse]
         results["Mult_Trend_Seas"] = [fit8.params[p] for p in params] + [fit8.sse]
-#         print('[INFO] exponential smoothing parameters extracted')
-
-#         print(results)
         return results
 
     def get_internals(self, x_i, dates):
@@ -203,7 +214,6 @@ class ES(preprocess):
             # load params
             chdir(self.loc + '/' + str(self.alpha) + '/' + self.params_path)
             for file in glob("*df*"):
-#                 print("...loading DataFrame - {}".format(splitext(file)[0]))
                 vars()[splitext(file)[0]] = pd.read_pickle(file)
                 params_dict[splitext(file)[0]] = vars()[splitext(file)[0]]
             print('[INFO] parameter data loaded')
@@ -218,7 +228,6 @@ class ES(preprocess):
             for col in df.columns.to_list():
                 i = df.columns.to_list().index(col)
                 ind = str(i).zfill(2)
-#                 print("...executing for column {} - {}".format(i, col))
                 vars()["int_df_{}".format(ind)] = self.get_internals(df.iloc[:, i], df.index)
                 vars()["int_df_{}".format(ind)].to_pickle(self.loc + '/' + str(self.alpha) + '/' + self.internals_path + "/int_df_{}".format(ind) + ".pkl")
                 internals_dict["int_df_{}".format(ind)] = vars()["int_df_{}".format(ind)]
@@ -227,7 +236,6 @@ class ES(preprocess):
             # load internals
             chdir(self.loc + '/' + str(self.alpha) + '/' + self.internals_path + "/")
             for file in glob("*df*"):
-#                 print("...loading DataFrame - {}".format(splitext(file)[0]))
                 vars()[splitext(file)[0]] = pd.read_pickle(file)
                 internals_dict[splitext(file)[0]] = vars()[splitext(file)[0]]
             print('[INFO] internals loaded')
@@ -244,7 +252,6 @@ class ES(preprocess):
         
         """
         #internals for scaled_df
-
         df_trend = pd.DataFrame(index = scaled_df.index)
         df_seas = pd.DataFrame(index = scaled_df.index)
 
@@ -253,7 +260,6 @@ class ES(preprocess):
             df_seas[i] = internals_dict[i]['$s_t$']
             
         # smooth for scaled_df
-
         es_scaled = scaled_df.values - df_trend.values - df_seas.values # exponentially smoothed (detrended, deseasononalized)
         es_scaled_df = pd.DataFrame(es_scaled, columns = scaled_df.columns, index = scaled_df.index)
         
@@ -270,18 +276,18 @@ class lstm():
     def __init__(self,
                  train_test = 0.1,
                  valid_test = 0.75,
-                 y_col = ['total_deaths', 'total_cases'], # define y variable, i.e., what we want to predict
-                 n_input_train = 14, # how many samples/rows/timesteps to look in the past in order to forecast the next sample
-                 b_size_train = 32, # Number of timeseries samples in each batch
-                 n_input_valid = 7, # how many samples/rows/timesteps to look in the past in order to forecast the next s
-                 b_size_valid = 32, # Number of timeseries samples in each batch
+                 y_col = ['total_deaths', 'total_cases'], # predictand(s)
+                 n_input_train = 14, # timesteps to look in the past in order to forecast the next sample
+                 b_size_train = 32, # timeseries samples in each batch
+                 n_input_valid = 7, # samples/rows/timesteps to look in the past in order to forecast the next s
+                 b_size_valid = 32,
                  lstm_size = 100,
                  activation = 'relu',
                  optimizer = 'adam',
                  loss = 'mse',
                  epochs = 15,
-                 runs = 100,
-                 alpha = 0.1,
+                 runs = 150,
+                 alpha = 0.2,
                  verbose = 0,
                  loc = 'United Kingdom',
                  results_path = 'results/mes_lstm/'
@@ -306,26 +312,19 @@ class lstm():
         self.loc = loc
         self.verbose = verbose
         
+    def split(self, es_scaled_df, train_ratio = 0.85, val_ratio = 0.05, test_ratio = 0.1):
+        n = len(es_scaled_df)
+        train = es_scaled_df[0:int(n*train_ratio)]
+        valid = es_scaled_df[int(n*train_ratio):int(n*(train_ratio + val_ratio))]
+        test = es_scaled_df[int(n*(train_ratio + val_ratio)):]
         
-        
-    def split(self, es_scaled_df):
-        # split train, test, valid for es_scaled_df
-    
-        test_size = int(len(es_scaled_df) * self.train_test) # the train data will be 90% (0.9) of the entire data
-        train = es_scaled_df.iloc[:-test_size,:].copy() # copy() prevents getting: SettingWithCopyWarning
-        test = es_scaled_df.iloc[-test_size:,:].copy()
-        valid, test = train_test_split(test, test_size = self.valid_test, shuffle = False) # valid is 25% of 10%
-        
-        # split x and y only for the train data (for now)
+        # split x and y only for the train data
         x_train = train.drop(self.y_col, axis = 1).copy()
         y_train = train[self.y_col].copy()
-        # split x and y only for the validation data (for now)
+        # split x and y only for the validation data
         x_valid = valid.drop(self.y_col, axis = 1).copy()
         y_valid = valid[self.y_col].copy()
         x_test = test.drop(self.y_col, axis = 1).copy() # split x for test
-        
-#         print('[INFO] data shape: train = {}, valid = {}, test = {}, x_train = {}, y_train = {}, x_valid = {}, y_valid = {}, x_test = {}'.format(
-#             train.shape, valid.shape, test.shape, x_train.shape, y_train.shape, x_valid.shape, y_valid.shape, x_test.shape))
         return train, valid, test, x_train, y_train, x_valid, y_valid, x_test
     
     
@@ -335,28 +334,19 @@ class lstm():
         
         """
         n_features_valid = x_valid.shape[1]
-        n_features_train = x_train.shape[1] # how many predictors/x's/features we have to predict y
+        n_features_train = x_train.shape[1]
         
         train_generator = TimeseriesGenerator(x_train.values, y_train.values, length = self.n_input_train, batch_size = self.b_size_train)
         valid_generator = TimeseriesGenerator(x_valid.values, y_valid.values, length = self.n_input_valid, batch_size = self.b_size_valid)
 
         model = Sequential()
         model.add(LSTM(self.lstm_size, activation = self.activation, return_sequences = False, input_shape = (self.n_input_train, n_features_train)))
-#         model.add(LSTM(int(np.floor(self.lstm_size/2)), return_sequences = True, activation = self.activation))
-#         model.add(LSTM(int(np.floor(self.lstm_size/4)), activation = self.activation))
         model.add(Dense(len(self.y_col)))
         model.compile(optimizer = self.optimizer, loss = self.loss)
-#         print(model.summary())
         
         model.fit_generator(train_generator, validation_data = valid_generator, epochs = self.epochs, verbose = self.verbose)
         train_loss_per_epoch = model.history.history['loss']
         valid_loss_per_epoch = model.history.history['val_loss']
-        
-        fig, ax = plt.subplots()
-        ax.plot(range(len(train_loss_per_epoch)), train_loss_per_epoch, label = 'train')
-        ax.plot(range(len(train_loss_per_epoch)), valid_loss_per_epoch, label = 'valid')
-        leg = ax.legend()
-        plt.show()
         
         test_generator = TimeseriesGenerator(x_test, np.zeros(test[self.y_col].shape), length = self.n_input_train, batch_size = self.b_size_train)
         y_pred_es_scaled = model.predict(test_generator)
@@ -370,7 +360,7 @@ class lstm():
         
         """
         n_features_valid = x_valid.shape[1]
-        n_features_train = x_train.shape[1] # how many predictors/x's/features we have to predict y
+        n_features_train = x_train.shape[1]
         
         train_generator = TimeseriesGenerator(x_train.values, y_train.values, length = self.n_input_train, batch_size = self.b_size_train)
         valid_generator = TimeseriesGenerator(x_valid.values, y_valid.values, length = self.n_input_valid, batch_size = self.b_size_valid)
@@ -379,18 +369,10 @@ class lstm():
         model.add(LSTM(self.lstm_size, activation = self.activation, input_shape = (self.n_input_train, n_features_train)))
         model.add(tfp.layers.DenseFlipout(len(self.y_col)))
         model.compile(optimizer = self.optimizer, loss = self.loss)
-#         print(model.summary())
         
         model.fit_generator(train_generator, validation_data = valid_generator, epochs = self.epochs, verbose = self.verbose)
         train_loss_per_epoch = model.history.history['loss']
-        valid_loss_per_epoch = model.history.history['val_loss']
-        
-        fig, ax = plt.subplots()
-        ax.plot(range(len(train_loss_per_epoch)), train_loss_per_epoch, label = 'train')
-        ax.plot(range(len(train_loss_per_epoch)), valid_loss_per_epoch, label = 'valid')
-        leg = ax.legend()
-        plt.show()
-        
+        valid_loss_per_epoch = model.history.history['val_loss']        
         test_generator = TimeseriesGenerator(x_test, np.zeros(test[self.y_col].shape), length = self.n_input_train, batch_size = self.b_size_train)
 
         vars()["pi_{}".format(self.y_col[0])] = pd.DataFrame()
@@ -413,9 +395,6 @@ class lstm():
         tf.keras.backend.clear_session()
         return pi_pred_es_scaled
     
-    
-    
-    
     def reTS(self, y_pred_es_scaled, es_scaled, train, valid, df_trend, df_seas, df_scaler, df):
         """
         re-trend, re-seasonalize, descale
@@ -423,7 +402,6 @@ class lstm():
         
         """
         # descale & desmooth forecast
-
         placehold_df = es_scaled.copy()
         placehold_df[self.y_col[0]][train.shape[0] + valid.shape[0] + self.n_input_train:] = y_pred_es_scaled[:, 0]
         placehold_df[self.y_col[1]][train.shape[0] + valid.shape[0] + self.n_input_train:] = y_pred_es_scaled[:, 1]
@@ -431,19 +409,11 @@ class lstm():
         
         df_scaler.fit(df)
         placehold_df = pd.DataFrame(df_scaler.inverse_transform(placehold_df), columns = es_scaled.columns) # descale
-
-
         y_pred = placehold_df[self.y_col][train.shape[0] + valid.shape[0] + self.n_input_train:]
-
         forecasts = pd.DataFrame({self.y_col[0] + '_true' : df[self.y_col[0]][train.shape[0] + valid.shape[0] + self.n_input_train:].values,
                                 self.y_col[0] + '_pred' : y_pred.iloc[:, 0],
                                 self.y_col[1] + '_true' : df[self.y_col[1]][train.shape[0] + valid.shape[0] + self.n_input_train:].values,
                                 self.y_col[1] +'_pred' : y_pred.iloc[:, 1]})
-#         print(forecasts)
-        forecasts.plot(y = [self.y_col[0] + '_pred', self.y_col[0] + '_true'])
-        forecasts.plot(y = [self.y_col[1] + '_pred', self.y_col[1] + '_true'])
-        
-#         if isdir(self.results_path) == False:
         makedirs(self.loc + '/' + str(self.alpha) + '/' + self.results_path, exist_ok = True)
         forecasts.to_pickle(self.loc + '/' + str(self.alpha) + '/' + self.results_path + 'forecast.pkl')
         print('[INFO] forecasts saved in results folder')
@@ -463,7 +433,7 @@ class lstm():
         placehold_df = placehold_df.values + df_trend.values + df_seas.values # desmooth
         df_scaler.fit(df)
         placehold_df = pd.DataFrame(df_scaler.inverse_transform(placehold_df), columns = es_scaled.columns) # descale
-        pi_pred_0 = placehold_df[self.y_col][train.shape[0] + valid.shape[0] + self.n_input_train:] # pi_0
+        pi_pred_0 = placehold_df[self.y_col][train.shape[0] + valid.shape[0] + self.n_input_train:]
         
         # descale & desmooth second predictant
         placehold_df = df.copy()
@@ -479,10 +449,6 @@ class lstm():
                                 self.y_col[1] + '_true' : df[self.y_col[1]][train.shape[0] + valid.shape[0] + self.n_input_train:].values,
                                 self.y_col[0] + '_upper' : pi_pred_1.iloc[:, 0],
                                 self.y_col[1] + '_upper' : pi_pred_1.iloc[:, 1],})
-#         print(pi)
-        pi.plot(y = [self.y_col[0] + '_true', self.y_col[0] + '_lower', self.y_col[0] + '_upper'])
-        pi.plot(y = [self.y_col[1] + '_true', self.y_col[1] + '_lower', self.y_col[1] + '_upper'])
-#         if isdir(self.results_path) == False:
         makedirs(self.loc + '/' + str(self.alpha) + '/' + self.results_path, exist_ok = True)
         pi.to_pickle(self.loc + '/' + str(self.alpha) + '/' + self.results_path + 'pi.pkl')
         print('[INFO] prediction intervals saved in results folder')
@@ -509,9 +475,6 @@ class lstm():
                                 self.y_col[0] + '_pred' : y_pred.iloc[:, 0],
                                 self.y_col[1] + '_true' : df[self.y_col[1]][train.shape[0] + valid.shape[0] + self.n_input_train:].values,
                                 self.y_col[1] +'_pred' : y_pred.iloc[:, 1]})
-#         print(forecasts)
-        forecasts.plot(y = [self.y_col[0] + '_pred', self.y_col[0] + '_true'])
-        forecasts.plot(y = [self.y_col[1] + '_pred', self.y_col[1] + '_true'])
         
         if isdir(self.loc + '/' + str(self.alpha) + '/' + self.results_path) == False:
             mkdir(self.loc + '/' + str(self.alpha) + '/' + self.results_path)
@@ -526,7 +489,7 @@ class lstm():
         returns PIs and truth
         
         """
-        # first
+        
         placehold_df = scaled_df.copy()
         placehold_df[self.y_col[0]][train.shape[0] + valid.shape[0] + self.n_input_train:] = pi_pred_scaled[self.y_col[0] + '_lower']
         placehold_df[self.y_col[1]][train.shape[0] + valid.shape[0] + self.n_input_train:] = pi_pred_scaled[self.y_col[1] + '_lower']
@@ -534,7 +497,6 @@ class lstm():
         placehold_df = pd.DataFrame(df_scaler.inverse_transform(placehold_df), columns = scaled_df.columns) # descale
         pi_pred_0 = placehold_df[self.y_col][train.shape[0] + valid.shape[0] + self.n_input_train:] # pi_0
         
-        # second
         placehold_df = scaled_df.copy()
         placehold_df[self.y_col[0]][train.shape[0] + valid.shape[0] + self.n_input_train:] = pi_pred_scaled[self.y_col[0] + '_upper']
         placehold_df[self.y_col[1]][train.shape[0] + valid.shape[0] + self.n_input_train:] = pi_pred_scaled[self.y_col[1] + '_upper']
@@ -550,9 +512,6 @@ class lstm():
                                 self.y_col[1] + '_true' : df[self.y_col[1]][train.shape[0] + valid.shape[0] + self.n_input_train:].values,
                                 self.y_col[0] + '_upper' : pi_pred_1.iloc[:, 0],
                                 self.y_col[1] + '_upper' : pi_pred_1.iloc[:, 1],})
-#         print(pi)
-        pi.plot(y = [self.y_col[0] + '_true', self.y_col[0] + '_lower', self.y_col[0] + '_upper'])
-        pi.plot(y = [self.y_col[1] + '_true', self.y_col[1] + '_lower', self.y_col[1] + '_upper'])
         if isdir(self.loc + '/' + str(self.alpha) + '/' + self.results_path) == False:
             mkdir(self.loc + '/' + str(self.alpha) + '/' + self.results_path)
         pi.to_pickle(self.loc + '/' + str(self.alpha) + '/' + self.results_path + 'pi.pkl')
@@ -570,7 +529,7 @@ class stats():
                  train_test = 0.1,
                  y_col = ['total_deaths', 'total_cases'],
                  n_input_train = 14,
-                 alpha = 0.1,
+                 alpha = 0.2,
                  loc = 'United Kingdom',
                  results_path = 'results/varmax/'
                 ):
@@ -582,28 +541,6 @@ class stats():
         self.alpha = alpha
         self.results_path = results_path
         self.loc = loc
-        
-        
-    def split(self, es_scaled_df):
-        
-        """
-        split train, test for stats
-        
-        """
-        
-        test_size = int(len(es_scaled_df) * self.train_test) # the train data will be 90% (0.9) of the entire data
-        train = es_scaled_df.iloc[:-test_size,:].copy() # copy() prevents getting: SettingWithCopyWarning
-        test = es_scaled_df.iloc[-test_size:,:].copy()
-
-        # split x and y only for the train data (for now)
-        x_train = train.drop(self.y_col, axis = 1).copy()
-        y_train = train[self.y_col].copy()
-        x_test = test.drop(self.y_col, axis = 1).copy() # split x for test
-
-#         print('[INFO] data shape: train = {}, test = {}, x_train = {}, y_train = {}, x_test = {}'.format(
-#             train.shape, test.shape, x_train.shape, y_train.shape, x_test.shape))
-        return train, test, x_train, x_test
-    
     
     def forecast_varmax(self, test, x_train, y_train, x_test):
         """
@@ -613,17 +550,12 @@ class stats():
 
         model = VARMAX(endog = y_train, exog = x_train, enforce_invertibility = False)
         model_fit = model.fit(disp = False)
-#         print(model_fit.summary())
         print('[INFO] VARMAX fitting complete')
         
         model_forecast = model_fit.get_prediction(start = model.nobs, end = model.nobs + test.shape[0] - 1, exog = x_test)
         y_pred_scaled = model_forecast.predicted_mean # forecast
         pi_pred_scaled = model_forecast.conf_int(alpha = self.alpha)
-#         print(y_pred_scaled, pi_pred_scaled)
-
         return y_pred_scaled, pi_pred_scaled
-
-        
 
     def forecast_sarimax(self, test, x_train, y_train, x_test):
         """
@@ -637,15 +569,12 @@ class stats():
         for col in self.y_col:
             model = SARIMAX(endog = y_train[col], exog = x_train, enforce_invertibility = False)
             model_fit = model.fit(disp = False)
-#             print(model_fit.summary())
             model_forecast = model_fit.get_prediction(start = model.nobs, end = model.nobs + test.shape[0] - 1, exog = x_test)
             y_pred_scaled[col] = model_forecast.predicted_mean # forecast
             pi = pd.DataFrame()
             pi = model_forecast.conf_int(alpha = self.alpha) # prediction intervals
             for pi_col in pi.columns:
                 pi_pred_scaled[pi_col] = pi[pi_col]
-                
-#         print(y_pred_scaled, pi_pred_scaled)
         print('[INFO] SARIMAX fitting complete')
         return y_pred_scaled, pi_pred_scaled
 
@@ -662,7 +591,6 @@ class stats():
         for col in self.y_col:
             model = OLS(endog = y_train[col], exog = x_train, enforce_invertibility = False)
             model_fit = model.fit(disp = False)
-#             print(model_fit.summary())
             model_forecast = model_fit.get_prediction(exog = x_test)
             model_forecast = model_forecast.summary_frame(alpha = self.alpha)
             y_pred_scaled[col] = model_forecast['mean'] # forecast
@@ -671,8 +599,6 @@ class stats():
             pi.columns = ['lower ' + col, 'upper ' + col]
             for pi_col in pi.columns:
                 pi_pred_scaled[pi_col] = pi[pi_col]
-                
-#         print(y_pred_scaled, pi_pred_scaled)
         print('[INFO] MLR fitting complete')
         return y_pred_scaled, pi_pred_scaled
 
@@ -694,11 +620,6 @@ class stats():
                                 self.y_col[0] + '_pred' : y_pred.iloc[:, 0],
                                 self.y_col[1] + '_true' : df[self.y_col[1]][train.shape[0] + valid.shape[0] + self.n_input_train:].values,
                                 self.y_col[1] +'_pred' : y_pred.iloc[:, 1]})
-#         print(forecasts)
-        forecasts.plot(y = [self.y_col[0] + '_pred', self.y_col[0] + '_true'])
-        forecasts.plot(y = [self.y_col[1] + '_pred', self.y_col[1] + '_true'])
-        
-#         if isdir(self.results_path) == False:
         makedirs(self.loc + '/' + str(self.alpha) + '/' + self.results_path, exist_ok = True)
         forecasts.to_pickle(self.loc + '/' + str(self.alpha) + '/' + self.results_path + 'forecast.pkl')
         print('[INFO] forecasts saved in results folder')
@@ -717,7 +638,7 @@ class stats():
         placehold_df[self.y_col[1]][-pi_pred_scaled.shape[0]:] = pi_pred_scaled['lower ' + self.y_col[1]]
         df_scaler.fit(df)
         placehold_df = pd.DataFrame(df_scaler.inverse_transform(placehold_df), columns = scaled_df.columns) # descale
-        pi_pred_0 = placehold_df[self.y_col][train.shape[0] + valid.shape[0] + self.n_input_train:] # pi_0
+        pi_pred_0 = placehold_df[self.y_col][train.shape[0] + valid.shape[0] + self.n_input_train:]
         
         # upper
         placehold_df = scaled_df.copy()
@@ -725,7 +646,7 @@ class stats():
         placehold_df[self.y_col[1]][-pi_pred_scaled.shape[0]:] = pi_pred_scaled['upper ' + self.y_col[1]]
         df_scaler.fit(df)
         placehold_df = pd.DataFrame(df_scaler.inverse_transform(placehold_df), columns = scaled_df.columns) # descale
-        pi_pred_1 = placehold_df[self.y_col][train.shape[0] + valid.shape[0] + self.n_input_train:] # pi_0
+        pi_pred_1 = placehold_df[self.y_col][train.shape[0] + valid.shape[0] + self.n_input_train:]
 
         pi = pd.DataFrame({self.y_col[0] + '_true' : df[self.y_col[0]][train.shape[0] + valid.shape[0] + self.n_input_train:].values,
                                 self.y_col[0] + '_lower' : pi_pred_0.iloc[:, 0],
@@ -733,10 +654,6 @@ class stats():
                                 self.y_col[1] + '_true' : df[self.y_col[1]][train.shape[0] + valid.shape[0] + self.n_input_train:].values,
                                 self.y_col[0] + '_upper' : pi_pred_1.iloc[:, 0],
                                 self.y_col[1] + '_upper' : pi_pred_1.iloc[:, 1],})
-#         print(pi)
-        pi.plot(y = [self.y_col[0] + '_true', self.y_col[0] + '_lower', self.y_col[0] + '_upper'])
-        pi.plot(y = [self.y_col[1] + '_true', self.y_col[1] + '_lower', self.y_col[1] + '_upper'])
-#         if isdir(self.results_path) == False:
         makedirs(self.loc + '/' + str(self.alpha) + '/' + self.results_path, exist_ok = True)
         pi.to_pickle(self.loc + '/' + str(self.alpha) + '/' + self.results_path + 'pi.pkl')
         print('[INFO] prediction intervals saved in results folder')

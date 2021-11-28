@@ -18,13 +18,6 @@ import os
 import warnings
 warnings.simplefilter('ignore')
 
-# check version
-print(tf.keras.__version__)
-print(tf.__version__)
-print(tfp.__version__)
-print(tf.config.list_physical_devices('GPU'))
-
-
 parser = argparse.ArgumentParser()
 parser.add_argument("--country", type = str, required = True, help = "which country to execute model on")
 parser.add_argument('--thresh', type = float, required = False, help = 'threshold of missing data if column is to be deleted')
@@ -58,25 +51,30 @@ for arg, value in sorted(vars(args).items()):
 
 runs = 36                          
 
-# MES_RNN model
+# MES_LSTM model
 
 # pre-processing layer
 if args.thresh:
     pre_layer = preprocess(first_time = 0, loc = args.country.replace('_', ' '), thresh = args.thresh) # change first_time to 1 if first time running to download data
 else:
-    pre_layer = preprocess(first_time = 0, loc = args.country.replace('_', ' ')) # use default thresh
+    pre_layer = preprocess(first_time = 0, loc = args.country.replace('_', ' ')) # use default threshold
 df = pre_layer.load_data()
 df = pre_layer.clean_data(df)
 df = pre_layer.fill_missing(df)
-scaled_df, df_scaler = pre_layer.scale(df)
-scaled_df
+hist, df = pre_layer.reindex(df)
 
-# exponential smoothing layer
+# scale historic data
+scaled_df, df_scaler = pre_layer.scale(hist)
+
+# exponentially smooth historic data
 mes_layer = ES(loc = args.country, alpha = args.alpha)
 params, internals = mes_layer.es(scaled_df)
 es_scaled, df_trend, df_seas = mes_layer.deTS(scaled_df, internals)
-
 es_scaled
+
+# scale test input
+scaled_df, _ = pre_layer.scale(df)
+es_scaled, _, _ = mes_layer.deTS(scaled_df, internals)
 
 results_deaths = pd.DataFrame(columns = ['smape_meslstm', 'rmse_meslstm', 'mis_meslstm', 'cov_meslstm',
                                      'smape_lstm', 'rmse_lstm', 'mis_lstm', 'cov_lstm',
@@ -89,8 +87,6 @@ results_cases = pd.DataFrame(columns = ['smape_meslstm', 'rmse_meslstm', 'mis_me
                                      'smape_sarimax', 'rmse_sarimax', 'mis_sarimax', 'cov_sarimax',
                                      'smape_mlr', 'rmse_mlr', 'mis_mlr', 'cov_mlr'])
 for run in range(runs):
-    
-    print(f'[INFO] processing for: {args.country}')
     print(f'[INFO] trial number: {str(run)} for country: {args.country}') 
 
     # deep learning layer
@@ -115,9 +111,6 @@ for run in range(runs):
     result_cases.append(mis(pi['total_cases_lower'].values, pi['total_cases_upper'].values, pi['total_cases_true'].values, alpha = dl_layer.alpha))
     result_deaths.append(coverage(pi['total_deaths_lower'].values, pi['total_deaths_upper'].values, pi['total_deaths_true'].values))
     result_cases.append(coverage(pi['total_cases_lower'].values, pi['total_cases_upper'].values, pi['total_cases_true'].values))
-
-#     tf.keras.backend.clear_session()
-
 
     # LSTM
 
@@ -148,15 +141,9 @@ for run in range(runs):
     result_deaths.append(coverage(pi['total_deaths_lower'].values, pi['total_deaths_upper'].values, pi['total_deaths_true'].values))
     result_cases.append(coverage(pi['total_cases_lower'].values, pi['total_cases_upper'].values, pi['total_cases_true'].values))
 
-
-#     tf.keras.backend.clear_session()
-
-    #-----
-
     # VARMAX
 
     bench = stats(loc = args.country, alpha = args.alpha)
-    train, test, x_train, x_test = bench.split(scaled_df)
     y_pred_scaled, pi_pred_scaled = bench.forecast_varmax(test, x_train, y_train, x_test)
     forecasts = bench.descale(y_pred_scaled, scaled_df, train, valid, df_scaler, df)
     pi = bench.descale_pi(pi_pred_scaled, scaled_df, train, valid, df_scaler, df)
@@ -174,7 +161,6 @@ for run in range(runs):
     # SARIMAX
 
     bench = stats(loc = args.country, results_path = 'results/sarimax/', alpha = args.alpha)
-    # train, test, x_train, x_test = bench.split(scaled_df)
     y_pred_scaled, pi_pred_scaled = bench.forecast_sarimax(test, x_train, y_train, x_test)
     forecasts = bench.descale(y_pred_scaled, scaled_df, train, valid, df_scaler, df)
     pi = bench.descale_pi(pi_pred_scaled, scaled_df, train, valid, df_scaler, df)
@@ -193,7 +179,6 @@ for run in range(runs):
     # MLR
 
     bench = stats(loc = args.country, results_path = 'results/mlr/', alpha = args.alpha)
-    # train, test, x_train, x_test = bench.split(scaled_df)
     y_pred_scaled, pi_pred_scaled = bench.forecast_mlr(test, x_train, y_train, x_test)
     forecasts = bench.descale(y_pred_scaled, scaled_df, train, valid, df_scaler, df)
     pi = bench.descale_pi(pi_pred_scaled, scaled_df, train, valid, df_scaler, df)
@@ -207,15 +192,8 @@ for run in range(runs):
     result_deaths.append(coverage(pi['total_deaths_lower'].values, pi['total_deaths_upper'].values, pi['total_deaths_true'].values))
     result_cases.append(coverage(pi['total_cases_lower'].values, pi['total_cases_upper'].values, pi['total_cases_true'].values))
 
-    print(result_deaths)
-    print(result_cases)
-
     results_deaths = results_deaths.append(pd.DataFrame(np.array(result_deaths).reshape(1,-1), columns = list(results_deaths)), ignore_index=True)
     results_cases = results_cases.append(pd.DataFrame(np.array(result_cases).reshape(1,-1), columns = list(results_cases)), ignore_index=True)
-#         results_cases.append(result_cases)
-    print(results_deaths.tail())
-    print(results_cases.tail())
-#     tf.keras.backend.clear_session()
     
 print('[INFO] ---------------------- DONE -----------------------------')
 
