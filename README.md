@@ -1,5 +1,5 @@
 # MES_LSTM
-A Hybrid Method of Exponential Smoothing and Recurrent Neural Networks for Multivariate Time Series Forecasting
+A Statistics and Deep Learning Hybrid Method for Multivariate Time Series Forecasting and Mortality Modeling
 
 This repository contains the code for the models (including the becnhmarks) presented in the paper by T. Mathonsi and T.L. van Zyl (currently under review). The code was tested on Ubuntu Linux and MacOS.
 
