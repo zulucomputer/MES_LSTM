@@ -70,7 +70,6 @@ scaled_df, df_scaler = pre_layer.scale(hist)
 mes_layer = ES(loc = args.country, alpha = args.alpha)
 params, internals = mes_layer.es(scaled_df)
 es_scaled, df_trend, df_seas = mes_layer.deTS(scaled_df, internals)
-es_scaled
 
 # scale test input
 scaled_df, _ = pre_layer.scale(df)
@@ -87,7 +86,7 @@ results_cases = pd.DataFrame(columns = ['smape_meslstm', 'rmse_meslstm', 'mis_me
                                      'smape_sarimax', 'rmse_sarimax', 'mis_sarimax', 'cov_sarimax',
                                      'smape_mlr', 'rmse_mlr', 'mis_mlr', 'cov_mlr'])
 for run in range(runs):
-    print(f'[INFO] trial number: {str(run)} for country: {args.country}') 
+    print(f'\n [INFO] trial number: {str(run)} for country: {args.country}') 
 
     # deep learning layer
     dl_layer = lstm(loc = args.country, alpha = args.alpha)
