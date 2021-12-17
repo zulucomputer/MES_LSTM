@@ -40,4 +40,17 @@ This repository contains the code for the models (including the becnhmarks) pres
 
 ```
 
+### Citation
+```
+@misc{mathonsi2021statistics,
+      title={A Statistics and Deep Learning Hybrid Method for Multivariate Time Series Forecasting and Mortality Modeling}, 
+      author={Thabang Mathonsi and Terence L. van Zyl},
+      year={2021},
+      eprint={2112.08618},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG}
+}
+
+```
+
 
