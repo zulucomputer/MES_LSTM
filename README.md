@@ -3,7 +3,7 @@ A Statistics and Deep Learning Hybrid Method for Multivariate Time Series Foreca
 
 This repository contains the code for the models (including the becnhmarks) presented in the paper by T. Mathonsi and T.L. van Zyl. The code was tested on Ubuntu Linux and MacOS.
 
-```run_MES_LSTM.ipynb``` Executes the model for a single country. ```run_simultaneous.sh``` Is the bash script which parallelizes ```run_multi_MES_LSTM.py``` and executes the model for any number of nations or region, with multiple independent trials. The latter accepts command-line arguments. ```results.ipynb``` Reproduces the figures and tables from the paper.
+```run_simultaneous.sh``` Is the bash script which parallelizes ```run_multi_MES_LSTM.py``` and executes the model for any number of nations or region, with multiple independent trials. The latter accepts command-line arguments. ```results.ipynb``` Reproduces the figures and tables from the paper.
 
 ### Requirements
 ```
