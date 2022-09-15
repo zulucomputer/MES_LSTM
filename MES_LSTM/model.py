@@ -22,7 +22,7 @@ from sklearn.linear_model import LinearRegression
 from statsmodels.api import OLS
 
 import warnings
-warnings.simplefilter('ignore')
+warnings.simplefilter('ignore') ##
 
 
 class preprocess():
