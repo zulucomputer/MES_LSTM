@@ -70,5 +70,5 @@ DOI = {10.3390/forecast4010001}
 }
 ```
 
-### Note: As of September 2022, this repository is no longer maintained.
+Note: As of September 2022, this repository is no longer maintained.
 
